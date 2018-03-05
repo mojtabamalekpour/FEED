@@ -1,0 +1,1 @@
+cmd_/home/mojtaba/projects/testbed/fifo.ko := ld -r -m elf_x86_64 -T ./scripts/module-common.lds --build-id  -o /home/mojtaba/projects/testbed/fifo.ko /home/mojtaba/projects/testbed/fifo.o /home/mojtaba/projects/testbed/fifo.mod.o ;  true

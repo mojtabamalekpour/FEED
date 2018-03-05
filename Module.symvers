@@ -1,0 +1,4 @@
+0x00000000	fifo_create_dflt	/home/mojtaba/projects/testbed/fifo	EXPORT_SYMBOL
+0x00000000	bfifo_qdisc_ops	/home/mojtaba/projects/testbed/fifo	EXPORT_SYMBOL
+0x00000000	fifo_set_limit	/home/mojtaba/projects/testbed/fifo	EXPORT_SYMBOL
+0x00000000	pfifo_qdisc_ops	/home/mojtaba/projects/testbed/fifo	EXPORT_SYMBOL
