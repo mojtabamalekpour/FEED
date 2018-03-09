@@ -8,6 +8,10 @@ MODULE_INFO(name, KBUILD_MODNAME);
 __visible struct module __this_module
 __attribute__((section(".gnu.linkonce.this_module"))) = {
 	.name = KBUILD_MODNAME,
+	.init = init_module,
+#ifdef CONFIG_MODULE_UNLOAD
+	.exit = cleanup_module,
+#endif
 	.arch = MODULE_ARCH_INIT,
 };
 
@@ -17,4 +21,4 @@ __attribute__((section(".modinfo"))) =
 "depends=";
 
 
-MODULE_INFO(srcversion, "52F0EAD9BBA1258212F097B");
+MODULE_INFO(srcversion, "9BEE25EAD293E519AAE8FC6");

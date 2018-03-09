@@ -1,5 +1,4 @@
-obj-m+=fifo.o
-sch_dwrr-y :=fifo.o
+obj-m+=sch_tbf.o
 
 all:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
