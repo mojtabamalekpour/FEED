@@ -1,3 +1,3 @@
-/home/mojtaba/projects/fed/sch_tbf.ko
-/home/mojtaba/projects/fed/sch_tbf.o
+/home/mojtaba/projects/testbed/fed/sch_tbf.ko
+/home/mojtaba/projects/testbed/fed/sch_tbf.o
 
