@@ -100,7 +100,7 @@
 	It is passed to the default bfifo qdisc - if the inner qdisc is
 	changed the limit is not effective anymore.
 */
-
+int counter=0;
 struct tbf_sched_data {
 /* Parameters */
 	u32		limit;		/* Maximal length of backlog: bytes */
@@ -194,11 +194,23 @@ static int tbf_segment(struct sk_buff *skb, struct Qdisc *sch,
 	return nb > 0 ? NET_XMIT_SUCCESS : NET_XMIT_DROP;
 }
 
+static void Mark(struct sk_buff *skb)
+{
+	ip_hdr(skb)->tos |= INET_ECN_CE;
+}
+
+static void UnMark(struct sk_buff *skb)
+{
+	ip_hdr(skb)->tos &= ~INET_ECN_MASK;
+}
+
 static int tbf_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 		       struct sk_buff **to_free)
 {
 	struct tbf_sched_data *q = qdisc_priv(sch);
 	int ret;
+	
+	/////////////////////////// Fed
 	__be32 addr_src;
 	__be32 addr_dst;
 	__be16 port_src;
@@ -206,6 +218,29 @@ static int tbf_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 	__u8 inner;
 	struct iphdr *iph;
 	struct tcphdr *tcph;
+
+	
+	printk("LEN  %d %d\n", counter,sch->q.qlen);
+
+	iph = ip_hdr(skb);
+	addr_src = iph->saddr;
+	addr_dst = iph->daddr;
+	
+	tcph = tcp_hdr(skb);
+	port_src = tcph->source;
+	port_dst = tcph->dest;
+	
+	printk("ENQUEUE  IP src:=%pI4  |  dst:=%pI4 || %d  %d\n", &addr_src,&addr_dst,port_src,port_dst);
+	inner = ip_hdr(skb)->tos;
+	if (INET_ECN_is_ce(inner)){
+		UnMark(skb);
+		counter++;
+		printk("Remove ECN.");
+	}else{
+		printk("NO ECN Detected");
+	}
+	/////////////////////////// End Fed
+
 
 	if (qdisc_pkt_len(skb) > q->max_size) {
 		if (skb_is_gso(skb) && skb_gso_mac_seglen(skb) <= q->max_size)
@@ -222,35 +257,6 @@ static int tbf_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 	qdisc_qstats_backlog_inc(sch, skb);
 	sch->q.qlen++;
 
-	iph = ip_hdr(skb);
-	addr_src = iph->saddr;
-	addr_dst = iph->daddr;
-	
-	tcph = tcp_hdr(skb);
-	port_src = tcph->source;
-	port_dst = tcph->dest;
-	
-
-	// INET_ECN_set_ce(skb);
-	// IP_ECN_clear(iph);
-	printk("IP src:=%pI4  |  dst:=%pI4 || %d  %d\n", &addr_src,&addr_dst,port_src,port_dst);
-	
-
-	inner = ip_hdr(skb)->tos |= INET_ECN_CE;
-	if (INET_ECN_is_ce(inner)){
-		printk("GOTTTTTTTTTTTT1");
-	}else{
-		printk("NOGOTTTTTTTTTT1");
-	}
-
-
-	inner = ip_hdr(skb)->tos &= ~INET_ECN_MASK;
-	if (INET_ECN_is_ce(inner)){
-		printk("GOTTTTTTTTTTTT2");
-	}else{
-		printk("NOGOTTTTTTTTTT2");
-	}
-	//INET_ECN_set_ce(skb);
 	return NET_XMIT_SUCCESS;
 }
 
@@ -263,14 +269,42 @@ static struct sk_buff *tbf_dequeue(struct Qdisc *sch)
 {
 	struct tbf_sched_data *q = qdisc_priv(sch);
 	struct sk_buff *skb;
-
+	__be32 addr_src;
+	__be32 addr_dst;
+	__be16 port_src;
+	__be16 port_dst;
+	__u8 inner;
+	struct iphdr *iph;
+	struct tcphdr *tcph;
 	skb = q->qdisc->ops->peek(q->qdisc);
-
+	
 	if (skb) {
 		s64 now;
 		s64 toks;
 		s64 ptoks = 0;
 		unsigned int len = qdisc_pkt_len(skb);
+
+
+		/////////////////////////// Fed
+		iph = ip_hdr(skb);
+		addr_src = iph->saddr;
+		addr_dst = iph->daddr;
+		
+		tcph = tcp_hdr(skb);
+		port_src = tcph->source;
+		port_dst = tcph->dest;
+		
+		printk("DEQUEUE  IP src:=%pI4  |  dst:=%pI4 || %d  %d\n", &addr_src,&addr_dst,port_src,port_dst);
+		
+		inner = ip_hdr(skb)->tos;
+		if (INET_ECN_is_ce(inner)){
+			Mark(skb);
+			counter++;
+			printk("ECN Added.");
+		}else{
+			printk("NO ECN.");
+		}
+		/////////////////////////// End Fed
 
 		now = ktime_get_ns();
 		toks = min_t(s64, now - q->t_c, q->buffer);

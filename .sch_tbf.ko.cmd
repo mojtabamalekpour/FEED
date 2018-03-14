@@ -1,0 +1,1 @@
+cmd_/home/mojtaba/projects/fed/sch_tbf.ko := ld -r -m elf_x86_64 -T ./scripts/module-common.lds --build-id  -o /home/mojtaba/projects/fed/sch_tbf.ko /home/mojtaba/projects/fed/sch_tbf.o /home/mojtaba/projects/fed/sch_tbf.mod.o ;  true
