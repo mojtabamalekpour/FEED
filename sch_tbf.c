@@ -26,80 +26,17 @@
 #include <net/tcp.h>
 #include <net/udp.h>
 
-/*	Simple Token Bucket Filter.
-	=======================================
+struct tableRecord{
+	__be32 src;
+	__be32 dst;
+	__be16 src_port;
+	__be16 dst_port;
+	int counter;
+};
 
-	SOURCE.
-	-------
-
-	None.
-
-	Description.
-	------------
-
-	A data flow obeys TBF with rate R and depth B, if for any
-	time interval t_i...t_f the number of transmitted bits
-	does not exceed B + R*(t_f-t_i).
-
-	Packetized version of this definition:
-	The sequence of packets of sizes s_i served at moments t_i
-	obeys TBF, if for any i<=k:
-
-	s_i+....+s_k <= B + R*(t_k - t_i)
-
-	Algorithm.
-	----------
-
-	Let N(t_i) be B/R initially and N(t) grow continuously with time as:
-
-	N(t+delta) = min{B/R, N(t) + delta}
-
-	If the first packet in queue has length S, it may be
-	transmitted only at the time t_* when S/R <= N(t_*),
-	and in this case N(t) jumps:
-
-	N(t_* + 0) = N(t_* - 0) - S/R.
+struct tableRecord table[4];
 
 
-
-	Actually, QoS requires two TBF to be applied to a data stream.
-	One of them controls steady state burst size, another
-	one with rate P (peak rate) and depth M (equal to link MTU)
-	limits bursts at a smaller time scale.
-
-	It is easy to see that P>R, and B>M. If P is infinity, this double
-	TBF is equivalent to a single one.
-
-	When TBF works in reshaping mode, latency is estimated as:
-
-	lat = max ((L-B)/R, (L-M)/P)
-
-
-	NOTES.
-	------
-
-	If TBF throttles, it starts a watchdog timer, which will wake it up
-	when it is ready to transmit.
-	Note that the minimal timer resolution is 1/HZ.
-	If no new packets arrive during this period,
-	or if the device is not awaken by EOI for some previous packet,
-	TBF can stop its activity for 1/HZ.
-
-
-	This means, that with depth B, the maximal rate is
-
-	R_crit = B*HZ
-
-	F.e. for 10Mbit ethernet and HZ=100 the minimal allowed B is ~10Kbytes.
-
-	Note that the peak rate TBF is much more tough: with MTU 1500
-	P_crit = 150Kbytes/sec. So, if you need greater peak
-	rates, use alpha with HZ=1000 :-)
-
-	With classful TBF, limit is just kept for backwards compatibility.
-	It is passed to the default bfifo qdisc - if the inner qdisc is
-	changed the limit is not effective anymore.
-*/
 int counter=0;
 struct tbf_sched_data {
 /* Parameters */
@@ -194,6 +131,7 @@ static int tbf_segment(struct sk_buff *skb, struct Qdisc *sch,
 	return nb > 0 ? NET_XMIT_SUCCESS : NET_XMIT_DROP;
 }
 
+/*
 static void Mark(struct sk_buff *skb)
 {
 	ip_hdr(skb)->tos |= INET_ECN_CE;
@@ -202,6 +140,13 @@ static void Mark(struct sk_buff *skb)
 static void UnMark(struct sk_buff *skb)
 {
 	ip_hdr(skb)->tos &= ~INET_ECN_MASK;
+}
+*/
+static bool is_sameFlow(__be32 src1,__be32 dst1,__be16 s_port1,__be16 d_port1,__be32 src2,__be32 dst2, __be16 s_port2,__be16 d_port2)
+{
+	if(src1 == src2  && dst1 == dst2 && s_port1 == s_port2 && d_port1 == d_port2)
+		return true;
+	return false;
 }
 
 static int tbf_enqueue(struct sk_buff *skb, struct Qdisc *sch,
@@ -218,9 +163,7 @@ static int tbf_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 	__u8 inner;
 	struct iphdr *iph;
 	struct tcphdr *tcph;
-
-	
-	printk("LEN  %d %d\n", counter,sch->q.qlen);
+	int i;
 
 	iph = ip_hdr(skb);
 	addr_src = iph->saddr;
@@ -230,14 +173,29 @@ static int tbf_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 	port_src = tcph->source;
 	port_dst = tcph->dest;
 	
-	printk("ENQUEUE  IP src:=%pI4  |  dst:=%pI4 || %d  %d\n", &addr_src,&addr_dst,port_src,port_dst);
+//	INET_ECN_set_ce(skb);
 	inner = ip_hdr(skb)->tos;
+	printk("ENQUEUE  IP src:=%pI4  |  dst:=%pI4 || Sp: %d  Dp: %d || counter: %d qlen: %u tos: %d \n", &addr_src,&addr_dst,port_src,port_dst,counter,sch->q.qlen,iph->tos);
 	if (INET_ECN_is_ce(inner)){
-		UnMark(skb);
+//		IP_ECN_clear(ip_hdr(skb));
+		table[0].src=addr_src;
+		table[0].dst=addr_dst;
+		table[0].src_port =port_src;
+		table[0].dst_port =port_dst;
+		table[0].counter=14;
+	for (i = 0; i < 4; ++i)
+	{
+		if (is_sameFlow(addr_src,addr_dst,port_src,port_dst,table[i].src,table[i].dst,table[i].src_port , table[i].dst_port))
+		{
+			printk("TIME TO ADD %d\n",i);
+		}
+
+	}
+	
 		counter++;
-		printk("Remove ECN.");
+		printk("++ Remove ECN.");
 	}else{
-		printk("NO ECN Detected");
+		printk("++ NO ECN");
 	}
 	/////////////////////////// End Fed
 
@@ -293,16 +251,18 @@ static struct sk_buff *tbf_dequeue(struct Qdisc *sch)
 		tcph = tcp_hdr(skb);
 		port_src = tcph->source;
 		port_dst = tcph->dest;
+	        printk("ENQUEUE  IP src:=%pI4  |  dst:=%pI4 || Sp: %d  Dp: %d || counter: %d qlen: %u tos: %d \n", &addr_src,&addr_dst,port_src,port_dst,counter,sch->q.qlen,iph->tos);
+
 		
-		printk("DEQUEUE  IP src:=%pI4  |  dst:=%pI4 || %d  %d\n", &addr_src,&addr_dst,port_src,port_dst);
+	//	printk("DEQUEUE  IP src:=%pI4  |  dst:=%pI4 || %d  %d\n", &addr_src,&addr_dst,port_src,port_dst);
 		
 		inner = ip_hdr(skb)->tos;
 		if (INET_ECN_is_ce(inner)){
-			Mark(skb);
-			counter++;
-			printk("ECN Added.");
+			INET_ECN_set_ce(skb);
+			counter--;
+			printk("-- ECN Added.");
 		}else{
-			printk("NO ECN.");
+			printk("-- NO ECN.");
 		}
 		/////////////////////////// End Fed
 
